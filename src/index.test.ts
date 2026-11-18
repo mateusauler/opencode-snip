@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import type { PermissionEvaluation } from "@opencode/plugin/effect/permission"
 import { SnipPlugin, launcherOf, rewrite, toolExecuteBefore, unquoteLauncher } from "./index"
+import { savePattern } from "./prefix"
 
 // Same probe as the plugin startup: an old snip without `hook` skips these tests.
 const probe = await rewrite("git status")
@@ -164,7 +165,7 @@ describe.skipIf(!hasSnipHook)("permission hook", () => {
       sessionID: "ses_test",
       action: "shell",
       resources: ["git status"],
-      save: ["git *"],
+      save: ["git status *"],
     })
     expect(event.effect).toBe("allow")
   })
@@ -228,7 +229,7 @@ describe.skipIf(!hasSnipHook)("permission hook", () => {
     expect(context.permission.assert).toHaveBeenCalledWith(
       expect.objectContaining({
         resources: ["git status", "echo hi"],
-        save: ["git *", "echo *"],
+        save: ["git status *", "echo *"],
       }),
     )
     expect(event.effect).toBe("allow")
@@ -249,7 +250,7 @@ describe.skipIf(!hasSnipHook)("permission hook", () => {
     const { context, evaluate } = await setup()
     await evaluate(evaluation({ resources: [`${launcher} run -- git status`, `${assignment} echo hi`] }))
     expect(context.permission.assert).toHaveBeenCalledWith(
-      expect.objectContaining({ save: ["git *", "echo *"] }),
+      expect.objectContaining({ save: ["git status *", "echo *"] }),
     )
   })
 
@@ -288,5 +289,31 @@ describe.skipIf(!hasSnipHook)("permission hook", () => {
     await cleanup?.()
     expect(disposeTool).toHaveBeenCalled()
     expect(disposePermission).toHaveBeenCalled()
+  })
+})
+
+describe("savePattern", () => {
+  it.each([
+    ["git clone --depth 1 https://example.com/repo.git", "git clone *"],
+    ["git status --short", "git status *"],
+    ["git config user.name", "git config user.name *"],
+    ["ls -la", "ls *"],
+    ["rg TODO src", "rg *"],
+    ["FOO=bar git status", "git status *"],
+    ["CGO_ENABLED=0 ls -la", "ls *"],
+    ["git \"a b\" status", "git \"a b\" *"],
+    ["git a\\ b status", "git a\\ b *"],
+    ["git > out status", "git *"],
+    ["git >out status", "git *"],
+    ["> out git status", "git status *"],
+    ["git status 2>&1", "git status *"],
+    ["git status > out", "git status *"],
+    ["FOO=(a b) git status", "git status *"],
+    ["FOO=$(a b) git status", "git status *"],
+    ["FOO=$((1 + 2)) git status", "git status *"],
+    ["git log>out", "git log *"],
+    ["FOO+=bar git log", "git log *"],
+  ])("saves the shell tool's prefix for %s", (command, saved) => {
+    expect(savePattern(command)).toBe(saved)
   })
 })

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import { Plugin } from "@opencode/plugin"
+import { savePattern } from "./prefix"
 
 // OpenCode's `cmd` shell escapes double quotes before handing a command to
 // cmd.exe, so a quoted launcher path arrives as \"C:\...\snip.exe\" and fails
@@ -54,7 +55,6 @@ export const toolExecuteBefore = async (event: { tool: string; input: unknown })
 // any other word there means the launcher is an argument, not a wrapper.
 const NAME = String.raw`[A-Za-z_][A-Za-z0-9_]*`
 const ASSIGNMENT = String.raw`${NAME}\+?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s\\]|\\.)*\s+`
-const BARE_COMMAND = new RegExp(`^(?:${ASSIGNMENT})*`)
 const RUNNER = String.raw`(?:(?:uv|poetry|pdm|pipenv|rye|hatch) run(?: --?[-\w.:=/]+(?: [^-\s]\S*)?)*|noglob|nocorrect|command|exec)\s+`
 const BIN = String.raw`(?:"(?:[^"\\]|\\.)*[\\/]snip(?:\.exe)?"|"snip(?:\.exe)?"|(?:[^\s"']*[\\/])?snip(?:\.exe)?)`
 const REST = String.raw`\s+(?:--plugin-config\s+(?:"(?:[^"\\]|\\.)*"|\S+)\s+)?(?:run\s+)?--\s+`
@@ -77,9 +77,6 @@ function unwrapSnip(resource: string, launcher: string): string | undefined {
   if (!groups || groups.launcher !== launcher) return undefined
   return `${groups.runner ?? ""}${groups.command}`
 }
-
-// Allow-always saves the first word of the command in this commit.
-const firstWord = (command: string) => command.trim().replace(BARE_COMMAND, "").split(/\s+/)[0]
 
 export const SnipPlugin = Plugin.define({
   id: "opencode-snip",
@@ -114,7 +111,7 @@ export const SnipPlugin = Plugin.define({
           ...(event.agent ? { agent: event.agent } : {}),
           action: event.action,
           resources: commands,
-          save: commands.map((command) => `${firstWord(command)} *`),
+          save: commands.map(savePattern),
           ...(event.source ? { source: event.source } : {}),
         })
         event.effect = "allow"
